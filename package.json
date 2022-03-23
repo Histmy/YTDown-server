@@ -1,7 +1,7 @@
 {
   "name": "ytdown-server",
   "version": "1.0.0",
-  "main": "out/rewrite2.js",
+  "main": "out/app.js",
   "scripts": {
     "test": "tsc && node ./out/app.js"
   },
