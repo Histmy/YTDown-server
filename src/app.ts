@@ -127,7 +127,7 @@ app.get("/stahnout", async (req, res) => {
     ytdlpProc.stderr?.on("data", ch => {
       if (!Buffer.isBuffer(ch) || !pripojeni[id]) return;
       const data = ch.toString();
-      const regex = /^\r\[download\] *(?<p>\d+(?:\.\d+))% *of *(?<si>\d+\.\d+)(?<u>\w+) *at *(?<sp>\d+\.\d+\w+\/s|Unknown speed) *ETA *(?<e>\d\d:\d\d|Unknown ETA)/;
+      const regex = /^\r\[download\] *(?<p>\d+(?:\.\d+))% *of *~? *(?<si>\d+\.\d+)(?<u>\w+) *at *(?<sp>\d+\.\d+\w+\/s|Unknown speed) *ETA *(?<e>\d\d:\d\d|Unknown ETA)/;
       const vysledek = regex.exec(data);
       if (!vysledek) return;
       const g = vysledek.groups!;
