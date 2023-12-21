@@ -1,10 +1,41 @@
 import express from "express";
-import { getInfo, validateURL } from "ytdl-core";
 import createYtDlpAsProcess from "@alpacamybags118/yt-dlp-exec";
 import { WsClovekData, SocketState, JSONData } from "./types";
 import { WebSocketServer } from "ws";
 import { compare } from "compare-versions";
 import ffmpeg from "fluent-ffmpeg";
+
+// Stolen and edited parser from ytdl-core
+const validQueryDomains = new Set([
+  'youtube.com',
+  'www.youtube.com',
+  'm.youtube.com',
+  'music.youtube.com',
+  'gaming.youtube.com',
+]);
+const validPathDomains = /^https?:\/\/(youtu\.be\/|(www\.)?youtube\.com\/(embed|v|shorts)\/)/;
+const idRegex = /^[a-zA-Z0-9-_]{11}$/;
+function validateURL(link: string): boolean {
+  const parsed = new URL(link.trim());
+  let id = parsed.searchParams.get('v');
+  if (validPathDomains.test(link.trim()) && !id) {
+    const paths = parsed.pathname.split('/');
+    id = parsed.host === 'youtu.be' ? paths[1] : paths[2];
+  } else if (parsed.hostname && !validQueryDomains.has(parsed.hostname)) {
+    return false;
+  }
+  if (!id) {
+    return false;
+  }
+  id = id.substring(0, 11);
+  if (!idRegex.test(id.trim())) {
+    return false;
+  }
+  return true;
+}
+
+// Update yt-dlp
+require("@alpacamybags118/yt-dlp-exec/hooks/download-yt-dlp");
 
 const arg2 = process.argv[2];
 const logLevel = arg2 == "min" ? 1 : arg2 == "all" ? 2 : 0;
@@ -92,9 +123,9 @@ app.get("/stahnout", async (req, res) => {
   if (typeof url != "string" || !validateURL(url)) return logAndExit("invalidni url", res, 400, "cos to tam zadal?");
 
   let title: string;
-  const nazevPomise = getInfo(url).then(info => {
+  const nazevPomise = createYtDlpAsProcess(url, { print: "title" }).then(output => {
     // Only ASCII characters can be sent in HTTP headers
-    title = info.videoDetails.title.replace(/[^\x00-\x7f]|[\/\\?<>:*|"]/g, "_"); // Also removes illegal characters from name
+    title = output.stdout.replace(/[^\x00-\x7f]|[\/\\?<>:*|"]/g, "_"); // Also removes illegal characters from name
     res.setHeader("Content-Disposition", `attachment; filename=${title}.mp3`);
     log(2, "name:", title);
   }).catch((e: Error) => {
@@ -127,7 +158,7 @@ app.get("/stahnout", async (req, res) => {
     ytdlpProc.stderr?.on("data", ch => {
       if (!Buffer.isBuffer(ch) || !pripojeni[id]) return;
       const data = ch.toString();
-      const regex = /^\r\[download\] *(?<p>\d+(?:\.\d+))% *of *(?<si>\d+\.\d+)(?<u>\w+) *at *(?<sp>\d+\.\d+\w+\/s|Unknown speed) *ETA *(?<e>\d\d:\d\d|Unknown ETA)/;
+      const regex = /^\r\[download\] *(?<p>\d+(?:\.\d+))% *of *~? *(?<si>\d+\.\d+)(?<u>\w+) *at *(?<sp>\d+\.\d+\w+\/s|Unknown speed) *ETA *(?<e>\d\d:\d\d|Unknown ETA)/;
       const vysledek = regex.exec(data);
       if (!vysledek) return;
       const g = vysledek.groups!;
