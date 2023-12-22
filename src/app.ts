@@ -123,22 +123,16 @@ app.get("/stahnout", async (req, res) => {
   if (typeof url != "string" || !validateURL(url)) return logAndExit("invalidni url", res, 400, "cos to tam zadal?");
 
   let title: string;
-  const nazevPomise = createYtDlpAsProcess(url, { print: "title" }).then(output => {
-    // Only ASCII characters can be sent in HTTP headers
-    title = output.stdout.replace(/[^\x00-\x7f]|[\/\\?<>:*|"]/g, "_"); // Also removes illegal characters from name
+  let nazevResover: () => void;
+  const nazevPromise = new Promise<void>(resolve => nazevResover = resolve).then(() => {
     res.setHeader("Content-Disposition", `attachment; filename=${title}.mp3`);
     log(2, "name:", title);
-  }).catch((e: Error) => {
-    if (e.message.indexOf("private") != -1) {
-      ytdlpProc.kill();
-      logAndExit("soukrome video", res, 400, "Toto video je soukromé.");
-    }
-    else logAndExit({ t: "ytdl err", e }, res, 500, "Došlo k neočekávané chybě. Zkuste no znovu nebo později.");
   });
 
   const ytdlpProc = createYtDlpAsProcess(url, {
     o: "-",
-    f: "ba"
+    f: "ba",
+    "parse-metadata": "title:%(title)s"
   }, { stdio: "pipe" });
 
   const efefempeg = ffmpeg(ytdlpProc.stdout!).format("mp3").on("error", (err: Error) => {
@@ -154,20 +148,38 @@ app.get("/stahnout", async (req, res) => {
 
   const id = req.query.id;
   // Parsing of yt-dlp output
-  if (typeof id == "string" && pripojeni[id])
-    ytdlpProc.stderr?.on("data", ch => {
-      if (!Buffer.isBuffer(ch) || !pripojeni[id]) return;
-      const data = ch.toString();
-      const regex = /^\r\[download\] *(?<p>\d+(?:\.\d+))% *of *~? *(?<si>\d+\.\d+)(?<u>\w+) *at *(?<sp>\d+\.\d+\w+\/s|Unknown speed) *ETA *(?<e>\d\d:\d\d|Unknown ETA)/;
-      const vysledek = regex.exec(data);
-      if (!vysledek) return;
-      const g = vysledek.groups!;
-      pripojeni[id].downloading = true;
-      pripojeni[id].progress = Math.round(Number(g.p));
-      if (g.e != "Unknown ETA") pripojeni[id].eta = g.e;
-    });
+  ytdlpProc.stderr?.on("data", ch => {
+    if (!Buffer.isBuffer(ch)) return;
+    const data = ch.toString().trim();
 
-  await nazevPomise;
+    // Check for errors
+    if (data.startsWith("ERROR:")) {
+      if (data.indexOf("Private video.") != -1) {
+        logAndExit("soukrome video", res, 400, "Toto video je soukromé.");
+      }
+      else logAndExit({ t: "ytdl err", data }, res, 500, "Došlo k neočekávané chybě. Zkuste to znovu nebo později.");
+    }
+
+    // Check for title
+    if (!title && data.startsWith("[MetadataParser]")) {
+      title = data.match(data.endsWith("'") ? /.+?': '(?<t>.+)'$/ : /.+?"(?<t>.+)"$/)?.groups?.t ?? "Unknown title";
+      title = title.replace(/\\'/g, "'").replace(/\\\\/g, "\\");
+      title = title.replace(/[^\x00-\x7f]|[\/\\?<>:*|"]/g, "_"); // Also removes illegal characters from name
+      nazevResover();
+      return;
+    }
+    if (typeof id != "string" || !pripojeni[id]) return;
+
+    const regex = /^\[download\] *(?<p>\d+(?:\.\d+))% *of *~? *(?<si>\d+\.\d+)(?<u>\w+) *at *(?<sp>\d+\.\d+\w+\/s|Unknown speed) *ETA *(?<e>\d\d:\d\d|Unknown ETA)/;
+    const vysledek = regex.exec(data);
+    if (!vysledek) return;
+    const g = vysledek.groups!;
+    pripojeni[id].downloading = true;
+    pripojeni[id].progress = Math.round(Number(g.p));
+    if (g.e != "Unknown ETA") pripojeni[id].eta = g.e;
+  });
+
+  await nazevPromise;
   efefempeg.stream(res, { end: true }).on("finish", () => log(2, "uspesne stazeno"));
 });
 
