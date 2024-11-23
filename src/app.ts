@@ -34,13 +34,23 @@ function validateURL(link: string): boolean {
   return true;
 }
 
+// Load config.json
+const config = require("./config.json") as { portHttp?: number, portWs?: number, logLevel?: string; };
+for (const key of Object.keys(config)) {
+  if (!["portHttp", "portWs", "logLevel"].includes(key)) {
+    throw new Error(`config.json contains an invalid key: ${key}`);
+  }
+}
+if (typeof config.portHttp != "number" || typeof config.portWs != "number" || typeof config.logLevel != "string") {
+  throw new Error("config.json is invalid");
+}
+
 // Update yt-dlp
 require("@alpacamybags118/yt-dlp-exec/hooks/download-yt-dlp");
 
-const arg2 = process.argv[2];
-const logLevel = arg2 == "min" ? 1 : arg2 == "all" ? 2 : 0;
+const logLevel = config.logLevel == "none" ? 0 : config.logLevel == "min" ? 1 : config.logLevel == "max" ? 2 : 1;
 const app = express();
-const wsServer = new WebSocketServer({ port: 6343 });
+const wsServer = new WebSocketServer({ port: config.portWs });
 
 function logAndExit(loging: any, res: express.Response, status: number, str: string) {
   log(1, loging);
@@ -57,7 +67,12 @@ function safeParseJSON(data: string): JSONData | null {
 }
 
 function log(level: number, ...loging: any) {
-  if (logLevel >= level) console.log(...loging);
+  if (logLevel < level)
+    return;
+
+  const date = new Date();
+  const time = `[${date.getDate()}.${date.getMonth() + 1} ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}.${date.getMilliseconds()}]`;
+  console.log(time, ...loging);
 }
 
 const pripojeni: Record<string, WsClovekData> = {};
@@ -152,6 +167,11 @@ app.get("/stahnout", async (req, res) => {
     if (!Buffer.isBuffer(ch)) return;
     const data = ch.toString().trim();
 
+    if (true) {
+      const textForPrint = data.replace(/\r/g, "");
+      log(2, textForPrint);
+    }
+
     // Check for errors
     if (data.startsWith("ERROR:")) {
       if (data.indexOf("Private video.") != -1) {
@@ -194,4 +214,4 @@ app.all("/latest-version", (_, res) => {
   res.end("0.3");
 });
 
-app.listen(6699, () => log(1, "server running"));
+app.listen(config.portHttp, () => log(1, "server running"));
