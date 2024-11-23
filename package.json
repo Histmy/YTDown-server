@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "out/app.js",
   "scripts": {
-    "test": "tsc && node ./out/app.js all"
+    "test": "tsc && node ./out/app.js",
+    "start": "node ./out/app.js"
   },
   "author": "Histmy",
   "license": "GPL-3.0",

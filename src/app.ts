@@ -35,7 +35,7 @@ function validateURL(link: string): boolean {
 }
 
 // Load config.json
-const config = require("./config.json") as { portHttp?: number, portWs?: number, logLevel?: string; };
+const config = require("../config.json") as { portHttp?: number, portWs?: number, logLevel?: string; };
 for (const key of Object.keys(config)) {
   if (!["portHttp", "portWs", "logLevel"].includes(key)) {
     throw new Error(`config.json contains an invalid key: ${key}`);
