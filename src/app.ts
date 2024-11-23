@@ -41,19 +41,19 @@ for (const key of Object.keys(config)) {
     throw new Error(`config.json contains an invalid key: ${key}`);
   }
 }
-if (typeof config.portHttp != "number" || typeof config.portWs != "number" || typeof config.logLevel != "string") {
+if (typeof config.portHttp != "number" || typeof config.portWs != "number") {
   throw new Error("config.json is invalid");
 }
 
 // Update yt-dlp
 require("@alpacamybags118/yt-dlp-exec/hooks/download-yt-dlp");
 
-const logLevel = config.logLevel == "none" ? 0 : config.logLevel == "min" ? 1 : config.logLevel == "max" ? 2 : 1;
+const logLevel = config.logLevel == "none" ? 0 : config.logLevel == "min" ? 1 : config.logLevel == "info" ? 2 : config.logLevel == "debug" ? 3 : 1;
 const app = express();
 const wsServer = new WebSocketServer({ port: config.portWs });
 
 function logAndExit(loging: any, res: express.Response, status: number, str: string) {
-  log(1, loging);
+  log(2, loging);
   if (!res.headersSent) res.status(status);
   res.end(str);
 }
@@ -167,10 +167,8 @@ app.get("/stahnout", async (req, res) => {
     if (!Buffer.isBuffer(ch)) return;
     const data = ch.toString().trim();
 
-    if (true) {
-      const textForPrint = data.replace(/\r/g, "");
-      log(2, textForPrint);
-    }
+    const textForPrint = data.replace(/\r/g, "");
+    log(3, textForPrint);
 
     // Check for errors
     if (data.startsWith("ERROR:")) {

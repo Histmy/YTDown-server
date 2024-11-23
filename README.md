@@ -21,4 +21,4 @@ You can configure the server by editing `config.json`. The following options are
 
 ### Optional
 
-- `logLevel`: The level of logging. Possible values are `none`, `err`, `all`. Default is `err`.
+- `logLevel`: The level of logging. Possible values are `none`, `min`, `info` and `debug`. Default is `min`.
