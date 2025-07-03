@@ -1,5 +1,4 @@
 {
-	"portHttp": 3000,
-	"portWs": 3001,
+	"port": 3000,
 	"logLevel": "info"
 }

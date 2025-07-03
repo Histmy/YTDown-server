@@ -1,9 +1,6 @@
 import express from "express";
-import createYtDlpAsProcess from "@alpacamybags118/yt-dlp-exec";
-import { WsClovekData, SocketState, JSONData } from "./types";
-import { WebSocketServer } from "ws";
-import { compare } from "compare-versions";
-import ffmpeg from "fluent-ffmpeg";
+import ytdl, { videoFormat, videoInfo } from "@distube/ytdl-core";
+import { convert } from "./ffmpegConvert";
 
 // Stolen and edited parser from ytdl-core
 const validQueryDomains = new Set([
@@ -35,13 +32,13 @@ function validateURL(link: string): boolean {
 }
 
 // Load config.json
-const config = require("../config.json") as { portHttp?: number, portWs?: number, logLevel?: string; };
+const config = require("../config.json") as { port?: number, logLevel?: string; };
 for (const key of Object.keys(config)) {
-  if (!["portHttp", "portWs", "logLevel"].includes(key)) {
+  if (!["port", "logLevel"].includes(key)) {
     throw new Error(`config.json contains an invalid key: ${key}`);
   }
 }
-if (typeof config.portHttp != "number" || typeof config.portWs != "number") {
+if (typeof config.port != "number") {
   throw new Error("config.json is invalid");
 }
 
@@ -50,20 +47,14 @@ require("@alpacamybags118/yt-dlp-exec/hooks/download-yt-dlp");
 
 const logLevel = config.logLevel == "none" ? 0 : config.logLevel == "min" ? 1 : config.logLevel == "info" ? 2 : config.logLevel == "debug" ? 3 : 1;
 const app = express();
-const wsServer = new WebSocketServer({ port: config.portWs });
 
 function logAndExit(loging: any, res: express.Response, status: number, str: string) {
   log(2, loging);
-  if (!res.headersSent) res.status(status);
-  res.end(str);
-}
-
-function safeParseJSON(data: string): JSONData | null {
-  try {
-    return JSON.parse(data);
-  } catch {
-    return null;
+  if (!res.headersSent) {
+    res.status(status);
+    res.setHeader("Content-Type", "text/plain; charset=UTF-8");
   }
+  res.end(str);
 }
 
 function log(level: number, ...loging: any) {
@@ -74,47 +65,6 @@ function log(level: number, ...loging: any) {
   const time = `[${date.getDate()}.${date.getMonth() + 1} ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}.${date.getMilliseconds()}]`;
   console.log(time, ...loging);
 }
-
-const pripojeni: Record<string, WsClovekData> = {};
-wsServer.on("connection", ws => {
-  let id: string;
-  do {
-    id = `${Math.random()}`.slice(2);
-  } while (pripojeni[id]);
-  const obj: WsClovekData = { downloading: false, state: SocketState.handshake };
-  pripojeni[id] = obj;
-  log(2, id, "connected");
-
-  // Disconnect if handshake not complete after 5s
-  setTimeout(() => {
-    if (obj.state == SocketState.handshake) ws.close(4001);
-  }, 5e3);
-
-  ws.on("message", m => {
-    const json = safeParseJSON(m.toString());
-    if (!json) return ws.close(4002);
-
-    switch (obj.state) {
-      case SocketState.handshake:
-        if (json.id != 0 || !json.version) return ws.close(4003);
-        if (compare(json.version, "0.3", "<")) return ws.close(4004);
-        obj.version = json.version;
-        obj.state = SocketState.downloading;
-        ws.send(JSON.stringify({ id: 1, socId: id }));
-        break;
-
-      case SocketState.downloading:
-        if (json.id != 0) return ws.close(4003);
-        ws.send(JSON.stringify({ downloading: obj.downloading, progress: obj.progress, eta: obj.eta }));
-        break;
-    }
-  });
-
-  ws.on("close", code => {
-    log(2, id, "disconnected, code:", code);
-    delete pripojeni[id];
-  });
-});
 
 app.set("trust proxy", 1);
 app.use(express.static(`${__dirname}/../static`));
@@ -132,73 +82,42 @@ app.use((req, res, next) => {
 
 app.get("/stahnout", async (req, res) => {
   const url = req.query.url;
-  if (!url) return logAndExit("zadna url", res, 400, "zkus tu url tam zadat ok?");
+  if (!url) {
+    return logAndExit("zadna url", res, 400, "zkus tu url tam zadat ok?");
+  }
   log(2, url);
 
-  if (typeof url != "string" || !validateURL(url)) return logAndExit("invalidni url", res, 400, "cos to tam zadal?");
+  if (typeof url != "string" || !validateURL(url)) {
+    return logAndExit("invalidni url", res, 400, "cos to tam zadal?");
+  }
 
-  let title: string;
-  let nazevResover: () => void;
-  const nazevPromise = new Promise<void>(resolve => nazevResover = resolve).then(() => {
-    res.setHeader("Content-Disposition", `attachment; filename=${title}.mp3`);
-    log(2, "name:", title);
-  });
+  const stream = ytdl(url, { filter: "audioonly", quality: "highestaudio" });
 
-  const ytdlpProc = createYtDlpAsProcess(url, {
-    o: "-",
-    f: "ba",
-    "parse-metadata": "title:%(title)s"
-  }, { stdio: "pipe" });
-
-  const efefempeg = ffmpeg(ytdlpProc.stdout!).format("mp3").on("error", (err: Error) => {
-    if (err.message == "Output stream closed" || err.message.startsWith("ffmpeg exited with code 255")) return;
-    if (err.message.startsWith("ffmpeg was killed")) return log(1, "ffmpeg was killed");
-    logAndExit({ t: "ffmpeg error", e: err }, res, 500, "neco se nepovedlo");
-  });
-
-  res.on("close", () => {
-    ytdlpProc.kill("SIGINT");
-    efefempeg.kill("SIGINT");
-  });
-
-  const id = req.query.id;
-  // Parsing of yt-dlp output
-  ytdlpProc.stderr?.on("data", ch => {
-    if (!Buffer.isBuffer(ch)) return;
-    const data = ch.toString().trim();
-
-    const textForPrint = data.replace(/\r/g, "");
-    log(3, textForPrint);
-
-    // Check for errors
-    if (data.startsWith("ERROR:")) {
-      if (data.indexOf("Private video.") != -1) {
-        logAndExit("soukrome video", res, 400, "Toto video je soukromé.");
-      }
-      else logAndExit({ t: "ytdl err", data }, res, 500, "Došlo k neočekávané chybě. Zkuste to znovu nebo později.");
+  stream.on("error", err => {
+    if (err.message.includes("private video.")) {
+      return logAndExit("soukrome video", res, 400, "Toto video je soukromé.");
     }
-
-    // Check for title
-    if (!title && data.startsWith("[MetadataParser]")) {
-      title = data.match(data.endsWith("'") ? /.+?': '(?<t>.+)'$/ : /.+?"(?<t>.+)"$/)?.groups?.t ?? "Unknown title";
-      title = title.replace(/\\'/g, "'").replace(/\\\\/g, "\\");
-      title = title.replace(/[^\x00-\x7f]|[\/\\?<>:*|"]/g, "_"); // Also removes illegal characters from name
-      nazevResover();
-      return;
-    }
-    if (typeof id != "string" || !pripojeni[id]) return;
-
-    const regex = /^\[download\] *(?<p>\d+(?:\.\d+))% *of *~? *(?<si>\d+\.\d+)(?<u>\w+) *at *(?<sp>\d+\.\d+\w+\/s|Unknown speed) *ETA *(?<e>\d\d:\d\d|Unknown ETA)/;
-    const vysledek = regex.exec(data);
-    if (!vysledek) return;
-    const g = vysledek.groups!;
-    pripojeni[id].downloading = true;
-    pripojeni[id].progress = Math.round(Number(g.p));
-    if (g.e != "Unknown ETA") pripojeni[id].eta = g.e;
   });
 
-  await nazevPromise;
-  efefempeg.stream(res, { end: true }).on("finish", () => log(2, "uspesne stazeno"));
+  stream.once("info", (info: videoInfo, format: videoFormat) => {
+    log(2, "info", info.videoDetails.title, format.contentLength);
+
+    const title = info.videoDetails.title
+      .replace(/\\'/g, "'")
+      .replace(/\\\\/g, "\\")
+      .replace(/[^\x00-\x7f]|[\/\\?<>:*|"]/g, "_"); // Also removes illegal characters from name
+
+    res.setHeader("Content-Disposition", `attachment; filename="${title}.mp3"`)
+      //.setHeader("Content-Length", format.contentLength)
+      .setHeader("Content-Type", "audio/mp3");
+
+    const mp3 = convert(stream);
+
+    mp3.pipe(res)
+      .on("finish", () => {
+        log(2, "stahovani dokonceno");
+      });
+  });
 });
 
 app.all("/stahnout", (_, res) => {
@@ -209,7 +128,7 @@ app.all("/stahnout", (_, res) => {
 });
 
 app.all("/latest-version", (_, res) => {
-  res.end("0.3");
+  res.end("0.4");
 });
 
-app.listen(config.portHttp, () => log(1, "server running"));
+app.listen(config.port, () => log(1, "server running"));
