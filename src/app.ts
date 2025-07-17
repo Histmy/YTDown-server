@@ -1,5 +1,5 @@
 import express from "express";
-import ytdl, { videoFormat, videoInfo } from "@distube/ytdl-core";
+import ytdl, { videoInfo } from "@distube/ytdl-core";
 import { convert } from "./ffmpegConvert";
 
 // Stolen and edited parser from ytdl-core
@@ -41,9 +41,6 @@ for (const key of Object.keys(config)) {
 if (typeof config.port != "number") {
   throw new Error("config.json is invalid");
 }
-
-// Update yt-dlp
-require("@alpacamybags118/yt-dlp-exec/hooks/download-yt-dlp");
 
 const logLevel = config.logLevel == "none" ? 0 : config.logLevel == "min" ? 1 : config.logLevel == "info" ? 2 : config.logLevel == "debug" ? 3 : 1;
 const app = express();
@@ -99,24 +96,28 @@ app.get("/stahnout", async (req, res) => {
     }
   });
 
-  stream.once("info", (info: videoInfo, format: videoFormat) => {
-    log(2, "info", info.videoDetails.title, format.contentLength);
+  stream.once("info", async (info: videoInfo) => {
+    log(2, "info", info.videoDetails.title);
 
-    const title = info.videoDetails.title
-      .replace(/\\'/g, "'")
-      .replace(/\\\\/g, "\\")
-      .replace(/[^\x00-\x7f]|[\/\\?<>:*|"]/g, "_"); // Also removes illegal characters from name
+    try {
+      const mp3 = await convert(stream);
 
-    res.setHeader("Content-Disposition", `attachment; filename="${title}.mp3"`)
-      //.setHeader("Content-Length", format.contentLength)
-      .setHeader("Content-Type", "audio/mp3");
+      const estimatedSize = Number(info.videoDetails.lengthSeconds) * 128 * 128; // Rough estimate: 128 kbps and 128 = 1024/8 to convert to bytes
 
-    const mp3 = convert(stream);
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(info.videoDetails.title)}.mp3`)
+        .setHeader("X-Estimated-Size", estimatedSize.toString())
+        .setHeader("Content-Type", "audio/mp3");
 
-    mp3.pipe(res)
-      .on("finish", () => {
-        log(2, "stahovani dokonceno");
-      });
+
+      mp3.pipe(res)
+        .on("close", () => {
+          log(2, "stahovani dokonceno");
+        });
+
+    } catch (e) {
+      log(2, "chyba pri konverzi", e);
+      return logAndExit("chyba pri konverzi", res, 500, "Nastala chyba při konverzi videa na MP3.");
+    }
   });
 });
 
@@ -128,7 +129,7 @@ app.all("/stahnout", (_, res) => {
 });
 
 app.all("/latest-version", (_, res) => {
-  res.end("0.4");
+  res.end("0.4.1");
 });
 
-app.listen(config.port, () => log(1, "server running"));
+app.listen(config.port, () => log(1, `server running on port ${config.port}`));

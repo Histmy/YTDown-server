@@ -4,6 +4,8 @@ Express server for downloading songs from YouTube. It's built primarily for my F
 
 ## Setup
 
+Before you start, make sure you have [ffmpeg](https://ffmpeg.org/download.html) installed on your system and available in PATH.
+
 1. Clone the repository
 1. Install dependencies with `npm i`
 1. Copy `config.example.json` to `config.json` and fill in the required fields
@@ -16,8 +18,7 @@ You can configure the server by editing `config.json`. The following options are
 
 ### Required
 
-- `portHttp`: The port of the http server, which servers the HTML page and the API.
-- `portWS`: The port of the websocket server, which is used for communication between the add-on and the server.
+- `port`: The port on which the server will listen.
 
 ### Optional
 

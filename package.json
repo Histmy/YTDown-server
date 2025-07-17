@@ -9,7 +9,6 @@
   "author": "Histmy",
   "license": "GPL-3.0",
   "dependencies": {
-    "@alpacamybags118/yt-dlp-exec": "^0.1.1",
     "@distube/ytdl-core": "^4.16.12",
     "express": "^4.18.2"
   },
