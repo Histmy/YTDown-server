@@ -1,6 +1,7 @@
 import express from "express";
-import ytdl, { videoInfo } from "@distube/ytdl-core";
 import { convert } from "./ffmpegConvert";
+import { download } from "./yt-dlp-download";
+import { config, log } from "./utils";
 
 // Stolen and edited parser from ytdl-core
 const validQueryDomains = new Set([
@@ -31,18 +32,6 @@ function validateURL(link: string): boolean {
   return true;
 }
 
-// Load config.json
-const config = require("../config.json") as { port?: number, logLevel?: string; };
-for (const key of Object.keys(config)) {
-  if (!["port", "logLevel"].includes(key)) {
-    throw new Error(`config.json contains an invalid key: ${key}`);
-  }
-}
-if (typeof config.port != "number") {
-  throw new Error("config.json is invalid");
-}
-
-const logLevel = config.logLevel == "none" ? 0 : config.logLevel == "min" ? 1 : config.logLevel == "info" ? 2 : config.logLevel == "debug" ? 3 : 1;
 const app = express();
 
 function logAndExit(loging: any, res: express.Response, status: number, str: string) {
@@ -52,15 +41,6 @@ function logAndExit(loging: any, res: express.Response, status: number, str: str
     res.setHeader("Content-Type", "text/plain; charset=UTF-8");
   }
   res.end(str);
-}
-
-function log(level: number, ...loging: any) {
-  if (logLevel < level)
-    return;
-
-  const date = new Date();
-  const time = `[${date.getDate()}.${date.getMonth() + 1} ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}.${date.getMilliseconds()}]`;
-  console.log(time, ...loging);
 }
 
 app.set("trust proxy", 1);
@@ -88,37 +68,39 @@ app.get("/stahnout", async (req, res) => {
     return logAndExit("invalidni url", res, 400, "cos to tam zadal?");
   }
 
-  const stream = ytdl(url, { filter: "audioonly", quality: "highestaudio" });
+  try {
+    const { stream, title, duration } = await download(url);
 
-  stream.on("error", err => {
-    if (err.message.includes("private video.")) {
-      return logAndExit("soukrome video", res, 400, "Toto video je soukromé.");
+    log(2, `info "${title}", ${duration}s`);
+
+    const estimatedSize = duration * 128 * 128; // Rough estimate: 128 kbps and 128 = 1024/8 to convert to bytes
+
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(title)}.mp3`)
+      .setHeader("X-Estimated-Size", estimatedSize.toString())
+      .setHeader("Content-Type", "audio/mp3");
+
+    const mp3 = await convert(stream);
+
+    mp3.pipe(res)
+      .on("close", () => {
+        log(2, "stahovani dokonceno");
+      });
+
+  } catch (e) {
+    if (typeof e == "string") {
+
+
+      if (e.includes("Private video")) {
+        return logAndExit("soukrome video", res, 400, "Toto video je soukromé.");
+      }
+      if (e.includes("confirm your age")) {
+        return logAndExit("video neni dostupne", res, 400, "Toto video je omezeno věkem.");
+      }
     }
-  });
 
-  stream.once("info", async (info: videoInfo) => {
-    log(2, "info", info.videoDetails.title);
-
-    try {
-      const mp3 = await convert(stream);
-
-      const estimatedSize = Number(info.videoDetails.lengthSeconds) * 128 * 128; // Rough estimate: 128 kbps and 128 = 1024/8 to convert to bytes
-
-      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(info.videoDetails.title)}.mp3`)
-        .setHeader("X-Estimated-Size", estimatedSize.toString())
-        .setHeader("Content-Type", "audio/mp3");
-
-
-      mp3.pipe(res)
-        .on("close", () => {
-          log(2, "stahovani dokonceno");
-        });
-
-    } catch (e) {
-      log(2, "chyba pri konverzi", e);
-      return logAndExit("chyba pri konverzi", res, 500, "Nastala chyba při konverzi videa na MP3.");
-    }
-  });
+    log(2, "chyba pri konverzi", e);
+    return logAndExit("chyba pri konverzi", res, 500, "Nastala chyba při konverzi videa na MP3.");
+  }
 });
 
 app.all("/stahnout", (_, res) => {
