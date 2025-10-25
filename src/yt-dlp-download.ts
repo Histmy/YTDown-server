@@ -70,10 +70,12 @@ const getInfo = (url: string) => new Promise<string>((res, rej) => {
 	process.on("exit", () => {
 		clearTimeout(timeout);
 
-		if (json && !err) {
+		if (json) {
 			res(json);
-		} else {
+		} else if (err) {
 			rej(err);
+		} else {
+			rej("no output");
 		}
 	});
 });

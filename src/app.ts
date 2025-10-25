@@ -64,7 +64,11 @@ app.get("/stahnout", async (req, res) => {
   }
   log(2, url);
 
-  if (typeof url != "string" || !validateURL(url)) {
+  try {
+    if (typeof url != "string" || !validateURL(url)) {
+      throw new Error();
+    }
+  } catch {
     return logAndExit("invalidni url", res, 400, "cos to tam zadal?");
   }
 
