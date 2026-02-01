@@ -42,13 +42,13 @@ const getInfo = (url: string) => new Promise<string>((res, rej) => {
 		skipDownload: true
 	});
 
-	const timeout = setTimeout(() => {
-		process.kill();
-		rej(new Error("timeout"));
-	}, TIMEOUT);
-
 	let json = "";
 	let err = "";
+
+	const timeout = setTimeout(() => {
+		process.kill();
+		rej(new Error("timeout " + err));
+	}, TIMEOUT);
 
 	process.catch(e => {
 		log(3, "yt-dlp exec error", e);

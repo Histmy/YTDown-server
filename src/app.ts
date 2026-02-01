@@ -2,6 +2,8 @@ import express from "express";
 import { convert } from "./ffmpegConvert";
 import { download } from "./yt-dlp-download";
 import { config, log } from "./utils";
+import { RequestLogger } from "./logger";
+import { join } from "path";
 
 // Stolen and edited parser from ytdl-core
 const validQueryDomains = new Set([
@@ -13,7 +15,7 @@ const validQueryDomains = new Set([
 ]);
 const validPathDomains = /^https?:\/\/(youtu\.be\/|(www\.)?youtube\.com\/(embed|v|shorts)\/)/;
 const idRegex = /^[a-zA-Z0-9-_]{11}$/;
-function validateURL(link: string): boolean {
+function validateURL(link: string): string | false {
   const parsed = new URL(link.trim());
   let id = parsed.searchParams.get('v');
   if (validPathDomains.test(link.trim()) && !id) {
@@ -25,14 +27,15 @@ function validateURL(link: string): boolean {
   if (!id) {
     return false;
   }
-  id = id.substring(0, 11);
-  if (!idRegex.test(id.trim())) {
+  id = id.substring(0, 11).trim();
+  if (!idRegex.test(id)) {
     return false;
   }
-  return true;
+  return id;
 }
 
 const app = express();
+const downloadLogger = new RequestLogger(join(__dirname, "../logs"));
 
 function logAndExit(loging: any, res: express.Response, status: number, str: string) {
   log(2, loging);
@@ -44,7 +47,7 @@ function logAndExit(loging: any, res: express.Response, status: number, str: str
 }
 
 app.set("trust proxy", 1);
-app.use(express.static(`${__dirname}/../static`));
+app.use(express.static(join(__dirname, "../static")));
 
 // Allow cross-origin requests
 app.use((req, res, next) => {
@@ -64,16 +67,22 @@ app.get("/stahnout", async (req, res) => {
   }
   log(2, url);
 
+  let videoId: string;
+
   try {
-    if (typeof url != "string" || !validateURL(url)) {
+    let res: string | false;
+    if (typeof url != "string" || !(res = validateURL(url))) {
       throw new Error();
     }
+    videoId = res;
   } catch {
     return logAndExit("invalidni url", res, 400, "cos to tam zadal?");
   }
 
+  const id = downloadLogger.start();
+
   try {
-    const { stream, title, duration } = await download(url);
+    const { stream, title, duration } = await download(`https://youtu.be/${videoId}`);
 
     log(2, `info "${title}", ${duration}s`);
 
@@ -88,17 +97,21 @@ app.get("/stahnout", async (req, res) => {
     mp3.pipe(res)
       .on("close", () => {
         log(2, "stahovani dokonceno");
+        downloadLogger.success(id);
       });
 
   } catch (e) {
+    downloadLogger.error(id);
+
     if (typeof e == "string") {
-
-
       if (e.includes("Private video")) {
         return logAndExit("soukrome video", res, 400, "Toto video je soukromé.");
       }
       if (e.includes("confirm your age")) {
         return logAndExit("video neni dostupne", res, 400, "Toto video je omezeno věkem.");
+      }
+      if (e.startsWith("timeout")) {
+        return logAndExit(e, res, 504, "Pokud o zahájení stahování trval příliš dlouho a byl přerušen.");
       }
     }
 
