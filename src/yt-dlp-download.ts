@@ -1,17 +1,57 @@
-import ytdl from "youtube-dl-exec";
-import { log } from "./utils";
+import ytdl, { Flags } from "youtube-dl-exec";
+import { config, log } from "./utils";
+
+type Ok<T> = { type: "ok"; value: T; };
+type Err<E> = { type: "err"; error: E; };
+type Result<T, E> = Ok<T> | Err<E>;
 
 const TIMEOUT = 30_000;
+
+const baseConfig: Flags = {
+	addHeader: ["referer:youtube.com", "user-agent:googlebot"],
+	jsRuntimes: "node"
+};
+
+const accountConfig: Flags = {
+	...baseConfig,
+	cookies: "cookies.txt"
+};
+
+async function getInfo(url: string) {
+	const json = await tryGetInfo(url, false);
+
+	if (json.type == "ok") {
+		return { result: json.value, ageRestricted: false };
+	}
+
+	if (!json.error.includes("confirm your age")) {
+		throw json.error;
+	}
+
+	if (!config.accountAvailable) {
+		throw new Error("video is age-restricted and account is not available");
+	}
+
+	log(2, "video is age-restricted, trying with account");
+
+	const jsonWithAccount = await tryGetInfo(url, true);
+
+	if (jsonWithAccount.type == "ok") {
+		return { result: jsonWithAccount.value, ageRestricted: true };
+	}
+
+	throw jsonWithAccount.error;
+}
 
 export async function download(url: string) {
 
 	log(3, "begin download");
 
-	const json = await getInfo(url);
+	const { result, ageRestricted } = await getInfo(url);
 
 	log(3, "got info");
 
-	const data = JSON.parse(json);
+	const data = JSON.parse(result);
 
 	log(3, "parsed json");
 
@@ -24,7 +64,7 @@ export async function download(url: string) {
 
 	log(3, "begin second download from json");
 
-	const stream = downloadFromInfo(json);
+	const stream = downloadFromInfo(result, ageRestricted);
 
 	log(3, "got stream");
 
@@ -35,11 +75,11 @@ export async function download(url: string) {
 	};
 }
 
-const getInfo = (url: string) => new Promise<string>((res, rej) => {
+const tryGetInfo = (url: string, withAccount: boolean) => new Promise<Result<string, string>>(res => {
 	const process = ytdl.exec(url, {
-		addHeader: ["referer:youtube.com", "user-agent:googlebot"],
+		... (withAccount ? accountConfig : baseConfig),
 		dumpJson: true,
-		skipDownload: true
+		skipDownload: true,
 	});
 
 	let json = "";
@@ -47,7 +87,7 @@ const getInfo = (url: string) => new Promise<string>((res, rej) => {
 
 	const timeout = setTimeout(() => {
 		process.kill();
-		rej(new Error("timeout " + err));
+		res({ type: "err", error: "timeout " + err });
 	}, TIMEOUT);
 
 	process.catch(e => {
@@ -71,21 +111,21 @@ const getInfo = (url: string) => new Promise<string>((res, rej) => {
 		clearTimeout(timeout);
 
 		if (json) {
-			res(json);
+			res({ type: "ok", value: json });
 		} else if (err) {
-			rej(err);
+			res({ type: "err", error: err });
 		} else {
-			rej("no output");
+			res({ type: "err", error: "no output" });
 		}
 	});
 });
 
-function downloadFromInfo(json: string) {
+function downloadFromInfo(json: string, withAccount: boolean) {
 	const process = ytdl.exec("", {
-		addHeader: ["referer:youtube.com", "user-agent:googlebot"],
+		... (withAccount ? accountConfig : baseConfig),
 		format: "ba",
 		loadInfoJson: "-",
-		output: "-"
+		output: "-",
 	});
 
 	const stdout = process.stdout;

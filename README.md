@@ -23,3 +23,4 @@ You can configure the server by editing `config.json`. The following options are
 ### Optional
 
 - `logLevel`: The level of logging. Possible values are `none`, `min`, `info` and `debug`. Default is `min`.
+- `accountAvailable`: Whether the cookies for YouTube account are available in a `cookies.txt` file in the root directory of the project. This is required for downloading age-restricted content. Default is `false`.

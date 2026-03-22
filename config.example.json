@@ -1,4 +1,5 @@
 {
 	"port": 3000,
-	"logLevel": "info"
+	"logLevel": "info",
+	"accountAvailable": false
 }

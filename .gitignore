@@ -1,6 +1,5 @@
 node_modules
 out
 config.json
-
-exitCodes.md
-other
+logs
+cookies.txt

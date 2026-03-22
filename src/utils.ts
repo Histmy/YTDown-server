@@ -1,11 +1,27 @@
+function validate(config: any): config is { port: number, logLevel: string; accountAvailable: boolean; } {
+	if (typeof config.port != "number") {
+		return false;
+	}
+
+	if (typeof config.logLevel != "string" || !["none", "min", "info", "debug"].includes(config.logLevel)) {
+		return false;
+	}
+
+	if (typeof config.accountAvailable != "boolean") {
+		return false;
+	}
+
+	return true;
+}
+
 export function LoadConfig() {
-	const config = require("../config.json") as { port?: number, logLevel?: string; };
+	const config = require("../config.json");
 	for (const key of Object.keys(config)) {
-		if (!["port", "logLevel"].includes(key)) {
+		if (!["port", "logLevel", "accountAvailable"].includes(key)) {
 			throw new Error(`config.json contains an invalid key: ${key}`);
 		}
 	}
-	if (typeof config.port != "number") {
+	if (!validate(config)) {
 		throw new Error("config.json is invalid");
 	}
 
