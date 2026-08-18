@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
-    "target": "ES2021",
-    "module": "CommonJS",
+    "target": "ES2024",
+    "module": "node20",
     "rootDir": "./src",
     "outDir": "./out",
-    "moduleResolution": "Node",
+    "moduleResolution": "node16",
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,

@@ -1,6 +1,6 @@
 import express from "express";
 import { convert } from "./ffmpegConvert";
-import { download } from "./yt-dlp-download";
+import { download, updateDownloader } from "./yt-dlp-download";
 import { config, log } from "./utils";
 import { RequestLogger } from "./logger";
 import { join } from "path";
@@ -131,4 +131,7 @@ app.all("/latest-version", (_, res) => {
   res.end("0.4.1");
 });
 
-app.listen(config.port, () => log(1, `server running on port ${config.port}`));
+log(1, "starting downloader update");
+updateDownloader().then(() => {
+  app.listen(config.port, () => log(1, `server running on port ${config.port}`));
+});

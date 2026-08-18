@@ -1,4 +1,4 @@
-import ytdl, { Flags } from "youtube-dl-exec";
+import ytdl, { Flags, update } from "youtube-dl-exec";
 import { config, log } from "./utils";
 
 type Ok<T> = { type: "ok"; value: T; };
@@ -137,4 +137,8 @@ function downloadFromInfo(json: string, withAccount: boolean) {
 	process.stdin?.end(json);
 
 	return stdout;
+}
+
+export async function updateDownloader() {
+	await update();
 }
