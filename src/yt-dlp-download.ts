@@ -12,9 +12,14 @@ const baseConfig: Flags = {
 	jsRuntimes: "node"
 };
 
+if (config.potProviderUrl) {
+	//@ts-ignore
+	baseConfig.extractorArgs = `youtubepot-bgutilhttp:base_url=${config.potProviderUrl}`;
+}
+
 const accountConfig: Flags = {
 	...baseConfig,
-	cookies: "cookies.txt"
+	cookies: config.cookiesFile,
 };
 
 async function getInfo(url: string) {
@@ -120,6 +125,7 @@ const tryGetInfo = (url: string, withAccount: boolean) => new Promise<Result<str
 		if (json) {
 			res({ type: "ok", value: json });
 		} else if (err) {
+			log(3, "yt-dlp error", err);
 			res({ type: "err", error: err });
 		} else {
 			res({ type: "err", error: "no output" });

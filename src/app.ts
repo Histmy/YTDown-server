@@ -139,3 +139,12 @@ log(1, "starting downloader update");
 updateDownloader().then(() => {
   app.listen(config.port, () => log(1, `server running on port ${config.port}`));
 });
+
+
+function exitHandler(signal: string) {
+  log(1, `${signal} received, shutting down server...`);
+  process.exit(0);
+}
+
+process.on("SIGINT", () => exitHandler("SIGINT"));
+process.on("SIGTERM", () => exitHandler("SIGTERM"));

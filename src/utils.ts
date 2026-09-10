@@ -1,29 +1,33 @@
-function validate(config: any): config is { port: number, logLevel: string; accountAvailable: boolean; } {
+import { configDotenv } from "dotenv";
+
+function validate(config: any): asserts config is { port: number, logLevel: string; cookiesFile: string; accountAvailable: boolean; potProviderUrl: string | undefined; } {
 	if (typeof config.port != "number") {
-		return false;
+		throw new Error("Port must be a number");
 	}
 
 	if (typeof config.logLevel != "string" || !["none", "min", "info", "debug"].includes(config.logLevel)) {
-		return false;
+		throw new Error("Invalid log level");
 	}
 
-	if (typeof config.accountAvailable != "boolean") {
-		return false;
+	if (typeof config.cookiesFile != "string") {
+		throw new Error("Cookies file must be a string");
 	}
 
-	return true;
 }
 
 export function LoadConfig() {
-	const config = require("../config.json");
-	for (const key of Object.keys(config)) {
-		if (!["port", "logLevel", "accountAvailable"].includes(key)) {
-			throw new Error(`config.json contains an invalid key: ${key}`);
-		}
-	}
-	if (!validate(config)) {
-		throw new Error("config.json is invalid");
-	}
+	configDotenv({ quiet: true });
+
+	const config = {
+		port: process.env.PORT ? parseInt(process.env.PORT as string) : undefined,
+		logLevel: process.env.LOG_LEVEL as string || "min",
+		cookiesFile: process.env.COOKIES_FILE as string || "",
+		accountAvailable: false,
+		potProviderUrl: process.env.POT_PROVIDER_URL,
+	};
+	config.accountAvailable = config.cookiesFile != null && config.cookiesFile.length > 0;
+
+	validate(config);
 
 	return config;
 }

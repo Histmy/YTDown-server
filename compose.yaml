@@ -1,0 +1,26 @@
+services:
+  yt-down:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    container_name: yt-down
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    volumes:
+      - yt-down-logs:/usr/src/app/logs:rw
+      - ./cookies.txt:/run/secrets/cookies:rw
+    depends_on:
+      - pot-provider
+
+  pot-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider
+    container_name: pot-provider
+    init: true
+
+volumes:
+  yt-down-logs:
