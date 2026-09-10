@@ -82,7 +82,7 @@ app.get("/stahnout", async (req, res) => {
   const id = downloadLogger.start();
 
   try {
-    const { stream, title, duration } = await download(`https://youtu.be/${videoId}`);
+    const { stream, title, artists, album, date, duration } = await download(`https://youtu.be/${videoId}`);
 
     log(2, `info "${title}", ${duration}s`);
 
@@ -91,6 +91,10 @@ app.get("/stahnout", async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(title)}.mp3`)
       .setHeader("X-Estimated-Size", estimatedSize.toString())
       .setHeader("Content-Type", "audio/mp3");
+
+    if (artists && album && date) {
+      res.setHeader("X-Metadata", JSON.stringify({ title, artists, album, date }));
+    }
 
     const mp3 = await convert(stream);
 

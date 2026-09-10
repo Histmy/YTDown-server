@@ -55,12 +55,16 @@ export async function download(url: string) {
 
 	log(3, "parsed json");
 
-	const title = data.title;
-	const duration = data.duration;
+	const { album, artists, duration, release_date, title, track, upload_date, uploader } = data;
 
 	if (typeof title != "string" || typeof duration != "number" || duration <= 0) {
 		throw new Error("invalid data");
 	}
+
+	const track_name = typeof track == "string" ? track : title;
+	const track_artist = Array.isArray(artists) ? artists : typeof uploader == "string" ? uploader : null;
+	const track_album = typeof album == "string" ? album : null;
+	const track_date = typeof release_date == "string" ? release_date : typeof upload_date == "string" ? upload_date : null;
 
 	log(3, "begin second download from json");
 
@@ -70,8 +74,11 @@ export async function download(url: string) {
 
 	return {
 		stream,
-		title,
-		duration
+		title: track_name,
+		artists: track_artist,
+		album: track_album,
+		date: track_date,
+		duration,
 	};
 }
 
